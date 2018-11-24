@@ -9,7 +9,7 @@ Phiremock is heavily inspired by [WireMock](http://wiremock.org/), but does not 
 * Network latency simulation.
 * Priorizable expectations for cases in which more than one matches the request. If more than one expectation matches the request and no priorities were set, the first match is returned.
 * Allows to verify the amount of times a request was done.
-* Allows to load default expectations from json files in a directory.
+* Allows to load default expectations from json files in a directory tree.
 * Proxy requests to another URL as they are received.
 * Client with fluent interface to configure Phiremock.
 * Integration to codeception through [phiremock-codeception-extension](https://github.com/mcustiel/phiremock-codeception-extension).
@@ -36,7 +36,7 @@ This project is published in packagist, so you just need to add it as a dependen
 
 ### Phar:
 
-You can also download the standalone phar application from [here](https://github.com/mcustiel/phiremock/releases/download/v1.8.0/phiremock.phar).
+You can also download the standalone phar application from [here](https://github.com/mcustiel/phiremock/releases/download/v1.10.0/phiremock.phar) to run on PHP7. There is also a [PHP5 version](https://github.com/mcustiel/phiremock/releases/download/v1.10.0/phiremock-php5.phar).
 
 ## Configuration
 Phiremock uses annotations internally. To be able to run the Phiremock client library, the annotations autoloader must be activated. To do this, you must add the next lines in the bootstrap file where you include your composer autoloader:
@@ -81,7 +81,7 @@ or
 * -i argument: specifies in which interface Phiremock should listen for requests. Default is 0.0.0.0
 * -p argument: is the port in which Phiremock should listen. Default is 8086
 * -d argument: enables debug mode in logger. By default, info logging level is used.
-* -e argument: specifies a directory to search for json files defining expectations to load by default. Default is ~/.phiremock/expectations
+* -e argument: specifies a directory tree to search for json files defining expectations to load by default. Default is ~/.phiremock/expectations
 
 Then, using phiremock's REST interface, expectations can be configured, specifying the response to send for a given request. A REST expectation resource for phiremock looks like this:
 
@@ -115,7 +115,7 @@ Then, using phiremock's REST interface, expectations can be configured, specifyi
 }
 ```
 
-The same format can be used in expectation files saved in the directory specified by the -e argument of the CLI. For Phiremock to be able to load them, each file should have `.json` extension.
+The same format can be used in expectation files saved in the directory tree specified by the -e argument of the CLI. For Phiremock to be able to load them, each file should have `.json` extension.
 
 ## Phiremock Client 
 Phiremock also provides a handy client object to simplify communication with the server in a fluent way.
@@ -368,7 +368,7 @@ If you want to simulate a behaviour of the service in which a response depends o
     $phiremock = new Phiremock('phiremock.server', '8080');
     
     $expectation = Phiremock::on(
-        A::posttRequest()->andUrl(Is::equalTo('/example_service/some/resource'))
+        A::postRequest()->andUrl(Is::equalTo('/example_service/some/resource'))
             ->andBody(Is::equalTo('{"id": "1", "name" : "resource"}'))
             ->andHeader('Content-Type', Is::equalTo('application/json'))
             ->andScenarioState('saved', 'Scenario.START')
@@ -381,7 +381,7 @@ If you want to simulate a behaviour of the service in which a response depends o
     $phiremock->createExpectation($expectation);
     
     $expectation = Phiremock::on(
-        A::getRequest()->andUrl(Is::equalTo('/example_service/some/resource'))
+        A::postRequest()->andUrl(Is::equalTo('/example_service/some/resource'))
             ->andBody(Is::equalTo('{"id": "1", "name" : "resource"}'))
             ->andHeader('Content-Type', Is::equalTo('application/json'))
             ->andScenarioState('saved', 'RESOURCE_SAVED')
@@ -404,13 +404,16 @@ To reset all scenarios to the initial state (Scenario.START) use this simple met
     
     $phiremock->resetScenarios();
 ```
+
 #### API call:
+
 ```
 DELETE /__phiremock/scenarios HTTP/1.1
 Host: your.phiremock.host
 ```
 
 To define a scenario state in any moment:
+
 ```php
     use Mcustiel\Phiremock\Client\Phiremock;
     use Mcustiel\Phiremock\Domain\ScenarioState;
@@ -419,8 +422,10 @@ To define a scenario state in any moment:
     
     $phiremock->setScenarioState(new ScenarioState('saved', 'Scenario.START')));
 ```
+
 #### API call:
-```
+
+```php
 PUT /__phiremock/scenarios HTTP/1.1
 Host: your.phiremock.host
 
@@ -468,6 +473,44 @@ It could be the case a mock is not needed for certain call. For this specific ca
 ```
 In this case, Phiremock will POST `http://your.real.service/some/path/script.php` with the configured body and header and return it's response.
 
+### Compare JSON objects
+Phiremock supports comparing strict equality of json objects, in case it's used in the API.
+The comparison is object-wise, so it does not matter that indentation or spacing is different.
+
+#### Example:
+
+```php
+    use Mcustiel\Phiremock\Client\Phiremock;
+
+    $phiremock = new Phiremock('phiremock.server', '8080');
+    
+    $expectation = Phiremock::on(
+        A::posttRequest()->andUrl(Is::equalTo('/my/resource'))
+            ->andBody(Is::sameJsonObjectAs('{"some": "json", "here":[1, 2, 3]}'))
+            ->andHeader('Content-Type', Is::equalTo('application/json'))
+    )->then(
+        Respond::withStatusCode(201)->andBody('{"id": 1}')
+    );
+    $phiremock->createExpectation($expectation);
+```
+
+Also passing of arrays or \JsonSerializable objects is supported.
+
+```php
+    use Mcustiel\Phiremock\Client\Phiremock;
+
+    $phiremock = new Phiremock('phiremock.server', '8080');
+    
+    $expectation = Phiremock::on(
+        A::posttRequest()->andUrl(Is::equalTo('/my/resource'))
+            ->andBody(Is::sameJsonObjectAs(['some' => 'json', 'here' => [1, 2, 3]]))
+            ->andHeader('Content-Type', Is::equalTo('application/json'))
+    )->then(
+        Respond::withStatusCode(201)->andBody('{"id": 1}')
+    );
+    $phiremock->createExpectation($expectation);
+```
+
 ### Generate response body based in request data
 It could happen that you want to make your response dependent on data you receive in your request. For this cases
 you can use regexp matching for request url and/or body, and access the subpatterns matches from your response body specification
@@ -489,7 +532,9 @@ using `${body.matchIndex}` or `${url.matchIndex}` notation.
     );
     $phiremock->createExpectation($expectation);
 ```
+
 Also retrieving data from multiple matches is supported:
+
 ```php
  use Mcustiel\Phiremock\Client\Phiremock;
 
@@ -511,6 +556,7 @@ Also retrieving data from multiple matches is supported:
 ### Shorthand syntax for common requests
 Phiremock is a bit too much expressive to create requests and that is a bit annoying when writing simple stubs. For that,
 there is a simpler syntax using `Phiremock::onRequest` method.
+
 #### Example:
 
 ```php
